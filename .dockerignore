@@ -1,0 +1,7 @@
+private/
+runtime/
+tests/
+*.bat
+*.command
+*.ps1
+.git/

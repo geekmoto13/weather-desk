@@ -1,0 +1,10 @@
+services:
+  weather-desk:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - weather-data:/app/private
+    restart: unless-stopped
+volumes:
+  weather-data:
