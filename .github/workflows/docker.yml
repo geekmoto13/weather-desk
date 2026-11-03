@@ -4,6 +4,17 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore:
+      - "**.md"
+      - "**.txt"
+      - "LICENSE"
+      - ".gitignore"
+      - ".gitattributes"
+      - "*.bat"
+      - "*.command"
+      - "tests/**"
+      - "runtime/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,10 +39,12 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
-      - uses: docker/build-push-action@v7
+            - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
