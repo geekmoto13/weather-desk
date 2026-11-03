@@ -8,7 +8,7 @@ browser. No account, cloud service or subscription is needed to get started, and
 everything you save stays on your machine.
 
 > **Edition:** US, build 29. Supports amd64 and arm64 docker deployment
- <!-- Add a screenshot here: ![Screenshot](docs/screenshot.png) -->
+ screenshot here: ![Screenshot](docs/screenshot.png)
 
 ## What it shows
 
