@@ -244,4 +244,4 @@ selection rules, rainfall and climate calculations, and verification notes.
 Created by Shannon. <!-- add name and links as she prefers -->
 Third-party notices are in [`third-party/`](third-party/).
 
-License: _to be chosen by the author before release (for example MIT)._
+Released under the MIT License. See [`LICENSE`](LICENSE).
