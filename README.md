@@ -109,8 +109,6 @@ run `chmod +x start-weather-desk.command` once).
 
 ## Docker
 
-Replace `OWNER` with the account that publishes the image, in lowercase.
-
 ### Docker Compose
 
 ```yaml
