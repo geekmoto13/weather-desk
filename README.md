@@ -46,7 +46,7 @@ Python is included, so there is no pip, Node or extra software to install.
 **Clone with Git**
 
 ```
-git clone https://github.com/OWNER/weather-desk.git
+git clone https://github.com/geekmoto13/weather-desk.git
 cd weather-desk
 ```
 
