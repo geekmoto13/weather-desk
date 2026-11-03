@@ -11,6 +11,7 @@ import argparse
 import copy
 import datetime as dt
 import hmac
+import errno
 import gzip
 import io
 import ipaddress
@@ -1391,8 +1392,12 @@ def main():
     try:
         server = create_server(host, args.port, args.preview, lan=lan,
                                extra_hosts=args.allow_host)
-    except OSError:
-        print(f"Port {args.port} is busy. Close the other dashboard or try --port 8766.")
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            print(f"Port {args.port} is busy. Close the other dashboard or try --port 8766.")
+        else:
+            print(f"Could not start the dashboard: {exc}")
+            print("If this mentions permissions or a missing folder, check the private/ data folder.")
         return 1
     url = f"http://127.0.0.1:{args.port}/"
     print(f"Shannon's Weather Desk is ready: {url}")
