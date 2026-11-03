@@ -116,7 +116,7 @@ Replace `OWNER` with the account that publishes the image, in lowercase.
 ```yaml
 services:
   weather-desk:
-    image: ghcr.io/OWNER/weather-desk:latest
+    image: ghcr.io/geekmoto13/weather-desk:latest
     container_name: weather-desk
     ports:
       - "8765:8765"
@@ -134,13 +134,13 @@ Save it as `docker-compose.yml`, run `docker compose up -d`, then open
 ### Single command
 
 ```
-docker run -d --name weather-desk -p 8765:8765 -v weather-data:/app/private --restart unless-stopped ghcr.io/OWNER/weather-desk:latest
+docker run -d --name weather-desk -p 8765:8765 -v weather-data:/app/private --restart unless-stopped ghcr.io/geekmoto13/weather-desk:latest
 ```
 
 ### Build it yourself
 
 ```
-git clone https://github.com/OWNER/weather-desk.git
+git clone https://github.com/geekmoto13/weather-desk.git
 cd weather-desk
 docker compose up -d --build
 ```
