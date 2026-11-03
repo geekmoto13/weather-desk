@@ -232,14 +232,17 @@ NOAA GOES lightning, NOAA SWPC, KC2G, RCC-ACIS climate data, and optionally
 Ambient Weather and Weather Underground with your own keys. Please respect each
 provider's terms of use.
 
-## More documentation
+## More details
 
-[`docs/DETAILS.md`](docs/DETAILS.md) covers startup internals, station
-selection rules, rainfall and climate calculations, and verification notes.
+The original project notes are in [`README Windows.txt`](README%20Windows.txt). They
+cover the forecast beacon, how public stations are chosen, startup internals,
+climate and rainfall calculations, Radio & Space, satellite lightning, and
+Weather Underground stations. Checks and their limits are in
+[`VALIDATION.md`](VALIDATION.md).
 
 ## Credits and license
 
-Created by Shannon. <!-- add name and links as she prefers -->
+Created by Shannon.
 Third-party notices are in [`third-party/`](third-party/).
 
 Released under the MIT License. See [`LICENSE`](LICENSE).
