@@ -110,6 +110,8 @@ run `chmod +x start-weather-desk.command` once).
 ## Docker
 
 ### Docker Compose
+This container will support both amd64 and arm64 with no changes
+
 
 ```yaml
 services:
