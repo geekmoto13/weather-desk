@@ -7,6 +7,8 @@ times, lightning and ham-radio space weather in one page you open in your
 browser. No account, cloud service or subscription is needed to get started, and
 everything you save stays on your machine.
 
+This Project is a Collaboration between Shannon KC1OHT and Robert KA6RTL
+
 > **Edition:** US, build 29. Supports amd64 and arm64 docker deployment
  screenshot here: ![Screenshot](docs/screenshot.png)
 
