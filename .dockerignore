@@ -6,5 +6,6 @@ tests/
 *.ps1
 .git/
 .github/
+docs/
 **/__pycache__
 **/*.pyc
