@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const APP_BUILD = "29";
+  const APP_BUILD = "30";
   const state = {
     settings: null,
     token: "",
@@ -89,6 +89,10 @@
       state.settings?.timezone,
       state.annual,
     );
+  const windMean = () => WeatherReadings.windMean10m(currentReading(), [
+    ...(isPublicReading() ? state.weather?.points || state.weather?.history || [] : state.historyStationKey === state.selectedStation ? state.history : []),
+    ...(state.weather?.windHistory || []),
+  ]);
   const beaufortText = (mph) => {
     const b = WeatherReadings.beaufort(mph);
     return b ? `Beaufort ${b.force} · ${b.label}` : "Beaufort unavailable";
@@ -299,6 +303,13 @@
     if (p < 0.78) return "Last quarter";
     return "Waning crescent";
   }
+  function renderRainAge() {
+    const value = state.weather?.rainSince;
+    put("rainSince", WeatherReadings.rainSinceText(value));
+    put("rainSinceSource", value?.source || "Waiting for rainfall reports");
+    $("rainSinceRow").title = `${value?.source || "Rain observations"}. ${value?.lastRainAt ? "Last recorded " + (value.approximate ? "wet interval ended " : "rain at ") + fullStamp(value.lastRainAt * 1000) + ". " : ""}${value?.asOf ? "Coverage through " + fullStamp(value.asOf * 1000) + ". " : ""}Elapsed 24-hour days. ≥ means a minimum supported by continuous dry observations; earlier rain or missing history is unknown.`;
+    $("rainSinceRow").setAttribute("aria-label", $("rainSinceRow").title);
+  }
   function updateAstro() {
     if (!state.settings) return;
     try {
@@ -310,6 +321,8 @@
         s.timezone,
       );
       const a = state.astro;
+      put("twilightStage", a.twilight.stage + (a.twilight.phase ? " · " + a.twilight.phase : ""));
+      $("twilightStage").title = `Sun centre ${fmt(a.twilight.sunAltitude)}°. Civil: sunset to −6°; nautical: −6° to −12°; astronomical: −12° to −18°. Calculated for your saved location at the current time.`;
       put("sunrise", clock(a.sun.rise));
       put("sunset", clock(a.sun.set));
       put("moonrise", clock(a.moon.rise));
@@ -504,6 +517,7 @@
       c = currentReading();
     $("weatherSourceNote").hidden = !isPublicReading();
     if (isPublicReading()) put("weatherSourceNote", publicCaption(w));
+    renderRainAge();
     if (!c) {
       for (const id of [
         "tempF",
@@ -539,6 +553,7 @@
         put(id, "—");
       $("windNeedle").style.opacity = "0";
       put("beaufortWind", "Waiting for wind");
+      put("windMean10m", "10-min mean unavailable");
       put("conditionLabel", "Waiting for observations");
       put("cardDate", "");
       put(
@@ -648,7 +663,10 @@
         : "SOLAR SENSOR UNAVAILABLE",
     );
     put("windSpeed", fmt(c.windMph));
-    put("beaufortWind", beaufortText(c.windMph));
+    const mean = windMean();
+    put("beaufortWind", has(mean.mph) ? beaufortText(mean.mph) : "Beaufort unavailable");
+    put("windMean10m", has(mean.mph) ? `10-min ${mean.estimated ? "estimate ≈" : "mean "}${fmt(mean.mph)} mph` : state.weather?.windHistoryLoading ? "Retrieving 10-min history…" : "10-min mean unavailable");
+    $("beaufortWind").title = (mean.source || mean.reason || "") + (mean.timestamp ? " · mean ending " + fullStamp(mean.timestamp * 1000) : "") + ". Scalar wind speed averaged over ten minutes; gusts are excluded. Sensor height has not been corrected to ten metres.";
     put(
       "windDirection",
       has(c.windMph) && c.windMph < 0.5 ? "CALM" : direction(c.windDeg),
@@ -1163,8 +1181,11 @@
     return state.climatePromise;
   }
   async function loadHistory() {
+    const stationKey = state.selectedStation;
     try {
       const result = await api("/api/history");
+      if (stationKey !== state.selectedStation) return;
+      state.historyStationKey = stationKey;
       state.history = result.points || [];
       state.historyError = result.error || null;
       if (result.trend && state.weather) state.weather.trend = result.trend;
@@ -1383,9 +1404,11 @@
       );
     lines.push(
       `Dew point: ${fmt(c.dewF)}°F / ${fmt(celsius(c.dewF))}°C · Humidity: ${fmt(c.humidity, 0)}%`,
-      `Wind: ${textUnits(c.windMph, "mph")} / ${textUnits(has(c.windMph) ? c.windMph * 1.609344 : null, "km/h")} from ${direction(c.windDeg)}${has(c.windDeg) ? " (" + fmt(c.windDeg, 0) + "°)" : ""}; ${beaufortText(c.windMph)}; gusts ${textUnits(c.gustMph, "mph")}`,
+      `Wind: ${textUnits(c.windMph, "mph")} / ${textUnits(has(c.windMph) ? c.windMph * 1.609344 : null, "km/h")} from ${direction(c.windDeg)}${has(c.windDeg) ? " (" + fmt(c.windDeg, 0) + "°)" : ""}; ${beaufortText(windMean().mph)}; gusts ${textUnits(c.gustMph, "mph")}`,
       `Daily max wind gust: ${textUnits(c.maxGustMph, "mph")} / ${textUnits(has(c.maxGustMph) ? c.maxGustMph * 1.609344 : null, "km/h")}`,
       `${pressureLabel(c)}: ${textUnits(c.pressureHpa, "hPa")} · ${trendText()}`,
+      `Beaufort basis: ${has(windMean().mph) ? textUnits(windMean().mph, "mph") + " ten-minute " + (windMean().estimated ? "estimated mean" : "mean") : "ten-minute mean unavailable"}; sensor height uncorrected`,
+      `Since recorded rain: ${WeatherReadings.rainSinceText(state.weather.rainSince)} · ${state.weather.rainSince?.source || "source unavailable"}`,
       `Rain — today: ${rain("rainDayMm")}; rate: ${textUnits(inch(c.rainRateMmHr), "in/h", 2)}`,
     );
     if (r.rain)
@@ -1608,11 +1631,11 @@
         "relative humidity",
       ],
       [
-        WeatherReadings.beaufort(c.windMph)
-          ? `WIND · ${WeatherReadings.beaufort(c.windMph).label.toUpperCase()}`
+        WeatherReadings.beaufort(windMean().mph)
+          ? `WIND · ${WeatherReadings.beaufort(windMean().mph).label.toUpperCase()}`
           : "WIND",
-        `${textUnits(c.windMph, "mph")}${WeatherReadings.beaufort(c.windMph) ? " · Bft " + WeatherReadings.beaufort(c.windMph).force : ""}`,
-        `From ${direction(c.windDeg)} · Gusts ${textUnits(c.gustMph, "mph")}`,
+        `${textUnits(c.windMph, "mph")}${WeatherReadings.beaufort(windMean().mph) ? " · Bft " + WeatherReadings.beaufort(windMean().mph).force : ""}`,
+        `10-min ${windMean().estimated ? "est." : "mean"} ${textUnits(windMean().mph, "mph")} · Gusts ${textUnits(c.gustMph, "mph")}`,
       ],
       [pressureLabel(c), textUnits(c.pressureHpa, "hPa"), trendText()],
     ];

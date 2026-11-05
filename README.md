@@ -7,10 +7,10 @@ times, lightning and ham-radio space weather in one page you open in your
 browser. No account, cloud service or subscription is needed to get started, and
 everything you save stays on your machine.
 
-This Project is a Collaboration between Shannon KC1OHT and Robert KA6RTL
+**A collaboration between Shannon (KC1OHT) and Robert (KA6RTL).**
 
-> **Edition:** US, build 29. Supports amd64 and arm64 docker deployment
- screenshot here: ![Screenshot](docs/screenshot.png)
+> **Edition:** US, build 30.
+> <!-- Add a screenshot here: ![Screenshot](docs/screenshot.png) -->
 
 ## What it shows
 
@@ -24,7 +24,13 @@ This Project is a Collaboration between Shannon KC1OHT and Robert KA6RTL
   NOAA radar refreshed every five minutes.
 - **Climate and history**: temperature and rain compared with 1991-2020
   normals, a temperature calendar, year-to-date rain, and a "past days" view.
-- **Tides, sun and moon** for your location.
+- **Tides, sun and moon** for your location. The Sun & Moon card also shows the
+  current twilight stage: daylight, civil, nautical or astronomical twilight,
+  or night, with dawn or dusk.
+- **Days since rain** in the rainfall heading, from your station's own last-rain
+  time or from the source's measured rainfall. Forecast and radar rain never count.
+- **Beaufort wind force** from a ten-minute mean wind speed (no correction for
+  sensor height). It shows unavailable when there is not enough wind data.
 - **Lightning nearby** from NOAA GOES satellites, no key required.
 - **Radio & Space**: NOAA SWPC space weather and KC2G propagation maps and
   circuit predictions for amateur radio.
@@ -112,8 +118,6 @@ run `chmod +x start-weather-desk.command` once).
 ## Docker
 
 ### Docker Compose
-This container will support both amd64 and arm64 with no changes
-
 
 ```yaml
 services:
@@ -156,7 +160,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Your settings and history live in the `weather-data` volume and survive updates.
+Your settings, history and rain-since records live in the `weather-data` volume and survive updates.
 Do not delete the volume, or run `docker compose down -v`, unless you want to
 start over. In Portainer, leave "remove associated volumes" unticked.
 
@@ -246,14 +250,7 @@ Weather Underground stations. Checks and their limits are in
 
 ## Credits and license
 
-Created by Shannon.
+A collaboration between Shannon (KC1OHT) and Robert (KA6RTL).
 Third-party notices are in [`third-party/`](third-party/).
 
 Released under the MIT License. See [`LICENSE`](LICENSE).
-
-## Support
-
-Questions and bug reports are welcome as GitHub issues on this repository.
-This is a hobby project maintained on a best-effort basis, so replies may
-take a few days. Please include your edition, how you run it (Windows, Docker
-
