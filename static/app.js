@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const APP_BUILD = "30";
+  const APP_BUILD = "31";
   const state = {
     settings: null,
     token: "",
@@ -185,6 +185,7 @@
       clearTimeout(timeout);
     }
   }
+  const tokyoPanel = globalThis.WeatherTokyo?.create({api});
   const lightningPanel = globalThis.WeatherLightning?.create({
     region: "US",
     api,
@@ -1953,7 +1954,8 @@
         !radioPanel ||
         !calendarPanel ||
         !locationPanel ||
-        !lightningPanel
+        !lightningPanel ||
+        !tokyoPanel
       ) {
         setError(
           "A dashboard file is missing. Copy all files from the new ZIP, restart the server, then reload this page.",
@@ -1963,6 +1965,7 @@
       if (state.credentialNotice) toast(state.credentialNotice);
       $("skyThemeSelect").disabled = false;
       lightningPanel.start();
+      tokyoPanel.start();
       alertPanel.start();
       pastPanel.start();
       radioPanel.start();

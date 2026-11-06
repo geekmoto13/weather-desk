@@ -10,8 +10,8 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime as dt
-import hmac
 import errno
+import hmac
 import gzip
 import io
 import ipaddress
@@ -39,6 +39,7 @@ from annual_rain import AnnualRain
 from historical_days import HistoricalDays, canonical_zone, finite, validate_day
 from local_store import SavedStationError, StationStore
 from rain_since import RainMemory, rain_time
+from tokyo_rain import TokyoRain
 from lightning import LightningDesk, LightningError
 from weather_location import LocationResolver
 from public_weather import PublicWeather
@@ -49,7 +50,7 @@ from timezones import local_date, validate_zone
 
 ROOT = Path(__file__).resolve().parent
 UTC = dt.timezone.utc
-BUILD = "30"
+BUILD = "31"
 DEFAULTS = {
     "title": "Shannon's Weather Desk",
     "location": "Lynn, Massachusetts",
@@ -66,6 +67,8 @@ DEFAULTS = {
     "climateStation": BOSTON,
 }
 ASSETS = {
+    "/tokyo.js": ("tokyo.js", "text/javascript; charset=utf-8"),
+    "/tokyo.css": ("tokyo.css", "text/css; charset=utf-8"),
     "/public-stations.js": ("public-stations.js", "text/javascript; charset=utf-8"),
     "/h5wasm.js": ("h5wasm.js", "text/javascript; charset=utf-8"),
     "/lightning-data.js": ("lightning-data.js", "text/javascript; charset=utf-8"),
@@ -375,6 +378,7 @@ class Desk:
         self.location_choices = {}
         self.wunderground = WundergroundWeather(self.data_dir, feels_like)
         self.rain_memory = RainMemory(self.data_dir)
+        self.tokyo_rain = TokyoRain(lambda url: fetch_json(url))
         self.public_weather = PreferredPublicWeather(
             self.data_dir,
             PublicWeather(
@@ -1227,7 +1231,7 @@ class Desk:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "WeatherDesk/1.0"
+    server_version = "WeatherDesk/1.2"
 
     def log_message(self, *_):
         pass  # Never log request bodies, keys, or upstream URLs.
@@ -1295,6 +1299,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return self.send_json({"error": str(exc)}, 400)
             routes = {
+                "/api/tokyo-rain": self.server.desk.tokyo_rain.get,
                 "/api/public-stations": self.server.desk.public_station_connection,
                 "/api/lightning": self.server.desk.lightning,
                 "/api/radio": self.server.desk.radio,
