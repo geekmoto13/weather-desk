@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfoNotFoundError
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import server
 import timezones
-from climate import BOSTON, BostonClimate, daily_almanac
+from climate import BOSTON, BostonClimate, daily_almanac, climate_value
 from climate_rain import rainfall_records
 from historical_days import day_bounds
 from historical_days import summarize_station
@@ -138,10 +138,20 @@ class PublicObservationTests(unittest.TestCase):
             result=public.snapshot({'latitude':34,'longitude':-118})
             self.assertEqual(result['stationId'],'KTWO');self.assertFalse(result['demo']);self.assertEqual(result['staleAfterSeconds'],5400)
 
+def calendar_baseline(site, raw=None):
+    normals = {row[0][5:]: climate_value(row[3])[0] for row in raw['data']} if raw else {'01-01': 50}
+    rows = []
+    for year in range(1991, 2021):
+        for key, normal in normals.items():
+            if normal is None: continue
+            mean = normal + (-1 if year < 2001 else 0 if year < 2011 else 1)
+            rows.append([f'{year}-{key}', [mean + 10, ' '], [mean - 10, ' ']])
+    return {'meta': {'name': site['name']}, 'data': rows}
+
 class TemperatureCalendarTests(unittest.TestCase):
-    def test_threshold_is_inclusive_and_missing_never_near_normal(self):
+    def test_tercile_bounds_are_inclusive_and_missing_never_middle(self):
         for mean,normal,expected in [(61,60,'at'),(59,60,'at'),(61.1,60,'above'),(58.9,60,'below'),(0,0,'at'),(None,60,'missing'),(60,None,'missing')]:
-            self.assertEqual(temperature_class(mean,normal)[0],expected)
+            self.assertEqual(temperature_class(mean,normal,normal-1 if normal is not None else None,normal+1 if normal is not None else None)[0],expected)
 
     def test_partial_station_span_cannot_make_a_temperature_color(self):
         summary={'coverage':{'fullSpan':False},'high':{'value':80},'low':{'value':60},'points':[]}
@@ -153,7 +163,7 @@ class TemperatureCalendarTests(unittest.TestCase):
             ['2026-10-02',['60',' '],['40',' '],'52'],['2026-10-03',['M',' '],['40',' '],'52']]}
         fetch=Mock(return_value=raw)
         with tempfile.TemporaryDirectory() as folder,patch('temperature_calendar.local_date',return_value=dt.date(2026,10,4)):
-            cal=TemperatureCalendar(folder,fetch);cal.snapshot('2026-10',SITE,SITE['timezone']);wait_calendar(cal)
+            cal=TemperatureCalendar(folder,fetch,lambda site:calendar_baseline(site,raw));cal.snapshot('2026-10',SITE,SITE['timezone']);wait_calendar(cal)
             result=cal.snapshot('2026-10',SITE,SITE['timezone'])
             self.assertEqual([d['status'] for d in result['days'][:5]],['above','below','missing','pending','future'])
             self.assertEqual(result['days'][0]['meanF'],60)
@@ -167,7 +177,7 @@ class TemperatureCalendarTests(unittest.TestCase):
         fetch=Mock(side_effect=[{'meta':{'name':SITE['name']},'data':[['2026-01-01',['60',' '],['40',' '],'50']]},
                                {'meta':{'name':'Minnesota'},'data':[['2026-01-01',['20',' '],['0',' '],'0']]}])
         with tempfile.TemporaryDirectory() as folder,patch('temperature_calendar.local_date',return_value=dt.date(2026,2,1)):
-            cal=TemperatureCalendar(folder,fetch);cal.snapshot('2026-01',SITE,SITE['timezone']);wait_calendar(cal)
+            cal=TemperatureCalendar(folder,fetch,calendar_baseline);cal.snapshot('2026-01',SITE,SITE['timezone']);wait_calendar(cal)
             other={**SITE,'id':'USC00218450','sid':'USC00218450 6','name':'Minnesota','timezone':'America/Chicago'}
             cal.snapshot('2026-01',other,other['timezone']);wait_calendar(cal)
             result=cal.snapshot('2026-01',other,other['timezone'])
@@ -185,7 +195,7 @@ class TemperatureCalendarTests(unittest.TestCase):
         raw={'meta':{'name':SITE['name']},'data':[['2026-01-01',['80',' '],['40',' '],'50']]}
         fetch=Mock(return_value=raw);page=Mock(return_value=points)
         with tempfile.TemporaryDirectory() as folder,patch('temperature_calendar.local_date',return_value=dt.date(2026,1,2)):
-            cal=TemperatureCalendar(folder,fetch)
+            cal=TemperatureCalendar(folder,fetch,lambda site:calendar_baseline(site,raw))
             cal.snapshot('2026-01',SITE,SITE['timezone'],'AA:BB:CC:DD:EE:FF',page);wait_calendar(cal)
             result=cal.snapshot('2026-01',SITE,SITE['timezone'],'AA:BB:CC:DD:EE:FF',page)
             self.assertEqual(result['days'][0]['meanF'],51.2);self.assertEqual(result['days'][0]['status'],'above')
@@ -199,7 +209,7 @@ class TemperatureCalendarTests(unittest.TestCase):
     def test_saved_colors_remain_visible_when_noaa_is_unavailable_after_restart(self):
         raw={'meta':{'name':SITE['name']},'data':[['2026-01-01',['60',' '],['40',' '],'45']]}
         with tempfile.TemporaryDirectory() as folder,patch('temperature_calendar.local_date',return_value=dt.date(2026,1,2)):
-            cal=TemperatureCalendar(folder,Mock(return_value=raw))
+            cal=TemperatureCalendar(folder,Mock(return_value=raw),lambda site:calendar_baseline(site,raw))
             cal.snapshot('2026-01',SITE,SITE['timezone']);wait_calendar(cal)
             raw_path=Path(folder)/'temperature-calendar'/f"{SITE['id']}-2026-01-noaa.json"
             saved=json.loads(raw_path.read_text());saved['fetchedAt']=0;raw_path.write_text(json.dumps(saved))

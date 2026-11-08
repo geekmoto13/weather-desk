@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const APP_BUILD = "31";
+  const APP_BUILD = "36-test";
   const state = {
     settings: null,
     token: "",
@@ -185,6 +185,7 @@
       clearTimeout(timeout);
     }
   }
+  const outlookPanel = globalThis.WeatherOutlook?.create({getSettings: () => state.settings});
   const tokyoPanel = globalThis.WeatherTokyo?.create({api});
   const lightningPanel = globalThis.WeatherLightning?.create({
     region: "US",
@@ -467,15 +468,19 @@
     );
   }
   async function loadForecast() {
+    const identity = `${state.settings?.latitude}|${state.settings?.longitude}`;
+    let forecast;
     try {
-      state.forecast = await api("/api/forecast");
+      forecast = await api("/api/forecast");
     } catch (error) {
-      state.forecast = {
-        error: "The forecast feed could not be reached. The beacon is unlit.",
-      };
+      forecast = {error: "The forecast feed could not be reached. The beacon is unlit."};
     }
+    if (identity !== `${state.settings?.latitude}|${state.settings?.longitude}`) return;
+    state.forecast = forecast;
     renderBeacon();
+    outlookPanel.render(state.forecast);
   }
+
   function condition() {
     const c = state.weather?.current;
     if (!c) return "Waiting for your station";
@@ -1955,7 +1960,8 @@
         !calendarPanel ||
         !locationPanel ||
         !lightningPanel ||
-        !tokyoPanel
+        !tokyoPanel ||
+        !outlookPanel
       ) {
         setError(
           "A dashboard file is missing. Copy all files from the new ZIP, restart the server, then reload this page.",

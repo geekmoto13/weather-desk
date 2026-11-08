@@ -8,20 +8,19 @@ in the web root. See README.md for setup and data definitions.
 from __future__ import annotations
 
 import argparse
+import socket
+import ipaddress
 import copy
 import datetime as dt
-import errno
 import hmac
 import gzip
 import io
-import ipaddress
 import json
 import math
 import os
 from pathlib import Path
 import re
 import secrets
-import socket
 import sqlite3
 import threading
 import time
@@ -40,6 +39,7 @@ from historical_days import HistoricalDays, canonical_zone, finite, validate_day
 from local_store import SavedStationError, StationStore
 from rain_since import RainMemory, rain_time
 from tokyo_rain import TokyoRain
+from forecast_values import temperature_f, wind_mph
 from lightning import LightningDesk, LightningError
 from weather_location import LocationResolver
 from public_weather import PublicWeather
@@ -50,7 +50,7 @@ from timezones import local_date, validate_zone
 
 ROOT = Path(__file__).resolve().parent
 UTC = dt.timezone.utc
-BUILD = "31"
+BUILD = "36-test"
 DEFAULTS = {
     "title": "Shannon's Weather Desk",
     "location": "Lynn, Massachusetts",
@@ -67,6 +67,9 @@ DEFAULTS = {
     "climateStation": BOSTON,
 }
 ASSETS = {
+    "/outlook.js": ("outlook.js", "text/javascript; charset=utf-8"),
+    "/outlook.css": ("outlook.css", "text/css; charset=utf-8"),
+    "/overview.css": ("overview.css", "text/css; charset=utf-8"),
     "/tokyo.js": ("tokyo.js", "text/javascript; charset=utf-8"),
     "/tokyo.css": ("tokyo.css", "text/css; charset=utf-8"),
     "/public-stations.js": ("public-stations.js", "text/javascript; charset=utf-8"),
@@ -78,6 +81,7 @@ ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/alerts.js": ("alerts.js", "text/javascript; charset=utf-8"),
     "/alerts.css": ("alerts.css", "text/css; charset=utf-8"),
+    "/radio-plots.js": ("radio-plots.js", "text/javascript; charset=utf-8"),
     "/radio.js": ("radio.js", "text/javascript; charset=utf-8"),
     "/radio.css": ("radio.css", "text/css; charset=utf-8"),
     "/past.js": ("past.js", "text/javascript; charset=utf-8"),
@@ -990,6 +994,9 @@ class Desk:
             settings = copy.deepcopy(self.settings)
         return self.radio_space.snapshot(settings)
 
+    def radio_destinations(self):
+        return self.radio_space.destinations()
+
     def radio_settings(self, values):
         try:
             return self.radio_space.update(values)
@@ -1147,8 +1154,10 @@ class Desk:
                         "end": start + (i + 1) * 3600,
                         "summary": "Mostly Clear" if i < 9 else "Partly Cloudy",
                         "pop": 10,
+                        "tempF": 56 + 7 * math.sin(i / 24 * 2 * math.pi),
+                        "windMph": 8 + i % 5,
                     }
-                    for i in range(25)
+                    for i in range(50)
                 ],
             }
         key = f"forecast:{self.settings['latitude']:.4f},{self.settings['longitude']:.4f}"
@@ -1189,7 +1198,7 @@ class Desk:
                 if not isinstance(p, dict):
                     continue
                 start, end = stamp(p.get("startTime")), stamp(p.get("endTime"))
-                if start is None or end is None or end <= now or start >= now + 86400:
+                if start is None or end is None or end <= now or start >= now + 49 * 3600:
                     continue
                 summary = p.get("shortForecast")
                 if not isinstance(summary, str) or not summary.strip():
@@ -1203,6 +1212,8 @@ class Desk:
                         "summary": summary[:200],
                         "pop": pop,
                         "sky": nws_sky_condition(p.get("icon")),
+                        "tempF": temperature_f(p.get("temperature"), p.get("temperatureUnit")),
+                        "windMph": wind_mph(p.get("windSpeed")),
                     }
                 )
             if not rows or issued is None:
@@ -1231,7 +1242,7 @@ class Desk:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "WeatherDesk/1.2"
+    server_version = "WeatherDesk/1.0"
 
     def log_message(self, *_):
         pass  # Never log request bodies, keys, or upstream URLs.
@@ -1240,14 +1251,13 @@ class Handler(BaseHTTPRequestHandler):
         host = urlsplit("http://" + self.headers.get("Host", "")).hostname
         if host in self.server.allowed_hosts:
             return True
-        # LAN mode: also accept private-network IP addresses typed directly.
-        # An IP literal cannot be a DNS-rebinding name, so this stays safe.
-        if self.server.allow_lan and host:
+        # LAN mode also accepts private-network IP addresses, so a phone or
+        # tablet can open http://192.168.x.x:PORT/. Public names stay refused.
+        if getattr(self.server, "lan", False) and host:
             try:
-                ip = ipaddress.ip_address(host)
+                return ipaddress.ip_address(host).is_private
             except ValueError:
                 return False
-            return ip.is_private or ip.is_link_local or ip.is_loopback
         return False
 
     def send_bytes(self, body, mime="application/json; charset=utf-8", status=200):
@@ -1303,6 +1313,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/public-stations": self.server.desk.public_station_connection,
                 "/api/lightning": self.server.desk.lightning,
                 "/api/radio": self.server.desk.radio,
+                "/api/radio/destinations": self.server.desk.radio_destinations,
                 "/api/status": self.server.desk.status,
                 "/api/weather": self.server.desk.weather,
                 "/api/history": self.server.desk.history,
@@ -1363,9 +1374,10 @@ def lan_addresses():
     """Best-effort list of this computer's private IPv4 addresses."""
     found = []
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-            probe.connect(("192.0.2.1", 9))  # Sends nothing; just picks the LAN route.
-            found.append(probe.getsockname()[0])
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("192.0.2.1", 9))  # no packet is sent
+        found.append(probe.getsockname()[0])
+        probe.close()
     except OSError:
         pass
     try:
@@ -1374,13 +1386,13 @@ def lan_addresses():
     except OSError:
         pass
     result = []
-    for addr in found:
+    for address in found:
         try:
-            ip = ipaddress.ip_address(addr)
+            ok = ipaddress.ip_address(address).is_private and not address.startswith("127.")
         except ValueError:
-            continue
-        if ip.is_private and not ip.is_loopback and addr not in result:
-            result.append(addr)
+            ok = False
+        if ok and address not in result:
+            result.append(address)
     return result
 
 
@@ -1388,17 +1400,12 @@ def create_server(host="127.0.0.1", port=8765, preview=False, data_dir=None,
                   lan=False, extra_hosts=()):
     server = ThreadingHTTPServer((host, port), Handler)
     server.desk = Desk(data_dir)
+    server.lan = bool(lan)
     server.allowed_hosts = {"127.0.0.1", "localhost", "::1"}
-    server.allow_lan = bool(lan)
     if lan:
-        # This computer's own names, so http://my-pc:8765/ and my-pc.local work too.
         name = socket.gethostname().lower()
-        if name:
-            server.allowed_hosts.update({name, name + ".local"})
-    for extra in extra_hosts:
-        extra = str(extra).strip().lower()
-        if extra:
-            server.allowed_hosts.add(extra)
+        server.allowed_hosts.update({name, name + ".local"})
+    server.allowed_hosts.update(str(h).lower() for h in extra_hosts)
     if preview:
         server.allowed_hosts.add("terminal.local")
     return server
@@ -1407,41 +1414,30 @@ def create_server(host="127.0.0.1", port=8765, preview=False, data_dir=None,
 def main():
     parser = argparse.ArgumentParser(description="Run your local weather dashboard.")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default=None)
     parser.add_argument("--lan", action="store_true",
-                        help="Let other devices on your home network open the dashboard "
-                             "(listens on all interfaces; there is no password)")
+                        help="Listen on the home network so phones and tablets can connect")
     parser.add_argument("--allow-host", action="append", default=[], metavar="NAME",
-                        help="Extra computer name this dashboard may be reached by (repeatable)")
+                        help="Also accept this computer name in LAN mode (repeatable)")
     parser.add_argument("--open", action="store_true", help="Open the dashboard in your browser")
     parser.add_argument("--preview", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
-    host = args.host
-    if args.lan and host == "127.0.0.1":
-        host = "0.0.0.0"
+    host = args.host or ("0.0.0.0" if args.lan else "127.0.0.1")
     lan = args.lan or host not in ("127.0.0.1", "localhost", "::1")
     try:
         server = create_server(host, args.port, args.preview, lan=lan,
                                extra_hosts=args.allow_host)
-    except OSError as exc:
-        if exc.errno == errno.EADDRINUSE:
-            print(f"Port {args.port} is busy. Close the other dashboard or try --port 8766.")
-        else:
-            print(f"Could not start the dashboard: {exc}")
-            print("If this mentions permissions or a missing folder, check the private/ data folder.")
+    except OSError:
+        print(f"Port {args.port} is busy. Close the other dashboard or try --port 8766.")
         return 1
     url = f"http://127.0.0.1:{args.port}/"
     print(f"Shannon's Weather Desk is ready: {url}")
-    if lan:
-        print("Network access is ON. Other devices on your home network can open:")
-        addresses = lan_addresses()
-        for addr in addresses:
-            print(f"    http://{addr}:{args.port}/")
-        if not addresses:
-            print("    (could not detect this computer's address; run ipconfig to find it)")
-        print("There is no password. Use only on a network you trust, and allow Python")
-        print("through Windows Firewall on Private networks only if Windows asks.")
     print("Keep this window open. Press Ctrl+C to stop. Remembered stations reconnect next time.")
+    if lan:
+        print("Network access is ON. Open the dashboard from another device at:")
+        for address in lan_addresses():
+            print(f"  http://{address}:{args.port}/")
+        print("There is no password: use this only on a network you trust.")
     if args.open:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:

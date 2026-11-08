@@ -24,7 +24,7 @@ class ForecastTests(unittest.TestCase):
         with patch.object(server,'fetch_json') as fetch:
             data=self.desk.forecast()
         self.assertTrue(data['demo'])
-        self.assertEqual(len(data['periods']),25)
+        self.assertEqual(len(data['periods']),50)
         fetch.assert_not_called()
 
     def test_live_hourly_periods_and_cache(self):
@@ -58,7 +58,7 @@ class ForecastTests(unittest.TestCase):
         with patch.object(server,'fetch_json',side_effect=[point,raw]) as fetch:
             data=self.desk.forecast()
             cached=self.desk.forecast()
-        self.assertEqual(len(data['periods']),2)
+        self.assertEqual(len(data['periods']),3)
         self.assertGreater(data['periods'][-1]['end'],now.timestamp()+13*3600)
         self.assertEqual(data,cached)
         self.assertEqual(fetch.call_count,2)

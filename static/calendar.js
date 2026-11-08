@@ -1,7 +1,15 @@
-/* Completed daily means; missing data never uses the green 'near normal' cell. */
+/* Experimental historical thirds. Missing history never becomes a green cell. */
 ((root) => {
   "use strict";
   const finite = (n) => typeof n === "number" && Number.isFinite(n);
+  const comparisonLabel = (day) =>
+    day.status === "above"
+      ? "↑ Warmer than the historical middle third"
+      : day.status === "below"
+        ? "↓ Cooler than the historical middle third"
+        : day.status === "at"
+          ? "→ Within the historical middle third"
+          : day.note || "Daily comparison unavailable";
   const dayInZone = (stamp, zone) => {
     const parts = Object.fromEntries(
       new Intl.DateTimeFormat("en-US", {
@@ -39,6 +47,8 @@
       finite(value)
         ? `${value.toFixed(1)}°F / ${(((value - 32) * 5) / 9).toFixed(1)}°C`
         : "Unavailable";
+    const cutoff = (value) =>
+      `${value.toFixed(2)}°F / ${(((value - 32) * 5) / 9).toFixed(2)}°C`;
     const shortDate = (date) =>
       new Intl.DateTimeFormat("en-US", {
         month: "short",
@@ -53,24 +63,22 @@
         year: "numeric",
         timeZone: "UTC",
       }).format(new Date(day.date + "T12:00:00Z"));
-      const status =
-        day.status === "above"
-          ? "↑ Above normal"
-          : day.status === "below"
-            ? "↓ Below normal"
-            : day.status === "at"
-              ? "→ Near normal (within ±1°F / ±0.6°C)"
-              : day.note || "Daily observation unavailable";
-      $("calendarDayStatus").textContent = status;
+      $("calendarDayStatus").textContent = comparisonLabel(day);
       $("calendarDayMean").textContent = mean(day.meanF);
       $("calendarDayNormal").textContent = mean(day.normalF);
+      $("calendarDayBand").textContent = finite(day.lowerThirdF) && finite(day.upperThirdF)
+        ? `${cutoff(day.lowerThirdF)} to ${cutoff(day.upperThirdF)}`
+        : "Unavailable — no substitute range";
+      $("calendarDayCoverage").textContent = Number.isInteger(day.baselineYears)
+        ? `${day.baselineYears} of ${day.baselineExpectedYears} reference years (at least ${day.baselineRequiredYears} required)${day.baselineExpectedYears === 8 ? "; leap day has a smaller sample" : ""}`
+        : "Historical reference not loaded";
       $("calendarDayRange").textContent =
         `High ${mean(day.highF)} · Low ${mean(day.lowF)}`;
       $("calendarDayDeparture").textContent = finite(day.departureF)
         ? `${day.departureF >= 0 ? "+" : ""}${day.departureF.toFixed(2)}°F / ${((day.departureF * 5) / 9).toFixed(1)}°C`
         : "Unavailable";
       $("calendarDaySource").textContent =
-        `Observed: ${payload?.source === "ambient" ? "your Ambient station" : payload?.stationName || "local NOAA climate station"}. Normal: ${payload?.stationName || "local climate station"} · 1991–2020. Mean temperature = (daily high + daily low) ÷ 2. Green means within ±1°F (±0.6°C) of normal, including both endpoints. This near-normal band is a dashboard display choice, not an official NOAA daily tolerance.`;
+        `Observed: ${payload?.source === "ambient" ? "your Ambient station" : payload?.stationName || "local NOAA climate station"}. Normal and historical reference: ${payload?.stationName || "local climate station"} · 1991–2020. Mean = (daily high + daily low) ÷ 2. Green is between this date’s historical 33⅓ and 66⅔ percentiles, including both endpoints; it need not have zero departure from normal. Cutoffs use linear interpolation of the paired daily means. Colours use full precision; displayed cutoffs are rounded. Experimental daily adaptation of CPC’s historical thirds, not official NOAA daily categories. At least 80% of the possible years are required; this coverage rule is our test choice. Today remains uncoloured.`;
       $("calendarDayDialog").showModal();
     }
     function render() {
@@ -124,35 +132,29 @@
                   : "";
         cell.append(number, symbol);
         cell.classList.toggle("is-today", day.date === payload?.today);
-        const label =
-          day.status === "above"
-            ? "above normal"
-            : day.status === "below"
-              ? "below normal"
-              : day.status === "at"
-                ? "near normal, within one degree Fahrenheit"
-                : day.note || "unavailable";
+        const label = comparisonLabel(day);
         cell.setAttribute(
           "aria-label",
           `${shortDate(day.date)}: ${label}${finite(day.departureF) ? `, departure ${day.departureF.toFixed(2)} degrees Fahrenheit` : ""}`,
         );
-        cell.title = `${shortDate(day.date)} · ${label}${finite(day.meanF) ? ` · mean ${day.meanF.toFixed(1)}°F, normal ${day.normalF?.toFixed(1)}°F` : ""}`;
+        cell.title = `${shortDate(day.date)} · ${label}${finite(day.meanF) ? ` · mean ${mean(day.meanF)}, normal ${mean(day.normalF)}` : ""}${finite(day.lowerThirdF) ? ` · middle third ${cutoff(day.lowerThirdF)} to ${cutoff(day.upperThirdF)}` : ""}`;
         cell.disabled = day.status === "future";
         cell.addEventListener("click", () => details(day));
         target.append(cell);
       }
       const s = getSettings() || {};
       $("calendarSource").textContent =
-        `${payload?.source === "ambient" ? "Your station" : "NOAA daily"} vs ${payload?.stationName || s.climateStation?.name || "local climate"} · 1991–2020`;
+        `${payload?.source === "ambient" ? "Your station" : "NOAA daily"} vs ${payload?.stationName || s.climateStation?.name || "local climate"} · 1991–2020 · test`;
       $("calendarStatus").textContent =
         payload?.error ||
+        payload?.baselineError ||
         (!payload
           ? "Loading daily temperatures…"
           : payload.loading
-            ? `Loading days · ${payload.completed}/${payload.total} · saved days stay available`
+            ? `${payload.phase || "Loading days"} ${payload.completed}/${payload.total}`
             : month === currentMonth()
-              ? "Daily mean vs normal · Today is in progress"
-              : "Completed daily means · Select a day for details");
+              ? "Historical thirds · Today is in progress"
+              : "Historical thirds · Select a day for cutoffs");
     }
     async function request(token = revision) {
       clearTimeout(timer);
@@ -222,7 +224,7 @@
       },
     };
   }
-  const api = { create, shiftMonth, dayInZone };
+  const api = { create, shiftMonth, dayInZone, comparisonLabel };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.WeatherCalendar = api;
 })(typeof window === "object" ? window : globalThis);
